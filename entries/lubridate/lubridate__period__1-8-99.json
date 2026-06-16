@@ -4,8 +4,8 @@
   "from_version": "1.8.99",
   "to_version": "1.9.9",
   "risk": "medium",
-  "description": "In lubridate 1.9.0, period() and duration arithmetic revised timezone and DST handling. Date calculations that span daylight-saving boundaries may return different results.",
+  "description": "In lubridate 1.9.0, the internal timezone and DST computation engine switched from Google's CCTZ to the timechange package. Period and duration arithmetic that spans DST boundaries or involves ambiguous/gap times (e.g. adding months() or years() across a DST transition) may return different results than under lubridate 1.8.x. The change is most likely to affect code adding calendar units (months, years) to POSIXct objects in non-UTC timezones.",
   "reference": "https://lubridate.tidyverse.org/news/index.html",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-01"
+  "added_date": "2026-06-16"
 }
