@@ -28,13 +28,13 @@ Each entry is a JSON file in `entries/{pkg}/`:
 ```json
 {
   "pkg":          "dplyr",
-  "fn":           "summarise",
+  "fn":           "group_by",
   "from_version": "1.0.99",
   "to_version":   "1.1.9",
-  "risk":         "high",
-  "description":  "In dplyr 1.1.0, summarise() changed its default grouping behaviour ...",
-  "reference":    "https://dplyr.tidyverse.org/news/index.html#dplyr-110",
-  "added_by":     "repro-stats",
+  "risk":         "medium",
+  "description":  "In dplyr 1.1.0, arrange() and group_by() changed to order character vectors using the C locale instead of the system locale ...",
+  "reference":    "https://dplyr.tidyverse.org/reference/group_by.html",
+  "added_by":     "ndohpenngit",
   "added_date":   "2026-06-01"
 }
 ```
@@ -47,7 +47,7 @@ entries/{pkg}/{pkg}__{fn}__{from_version}.json
 
 Examples:
 ```
-entries/dplyr/dplyr__summarise__1-0-99.json
+entries/dplyr/dplyr__group_by__1-0-99.json
 entries/stats/stats__sample__3-5-99.json
 entries/rstan/rstan__stan__2-21-99.json
 ```
@@ -94,21 +94,9 @@ erode trust in the tool. Prefer narrower windows when in doubt.
 
 ## Current coverage
 
-| Package | Entries |
-|---|---|
-| `dplyr` | 5 |
-| `tidyr` | 3 |
-| `ggplot2` | 3 |
-| `readr` | 2 |
-| `purrr` | 2 |
-| `stringr` | 1 |
-| `lubridate` | 2 |
-| `broom` | 1 |
-| `data.table` | 2 |
-| `lme4` | 1 |
-| `rstan` | 2 |
-| `stats` / `base R` | 5 |
-| **Total** | **29** |
+Browse all entries in [`entries/`](entries/) — one subdirectory per package,
+one JSON file per tracked function. The CI badge above confirms all entries
+are currently valid against the schema.
 
 ---
 
@@ -137,6 +125,7 @@ erode trust in the tool. Prefer narrower windows when in doubt.
 2. The change is **silent** — no error or warning on the old calling pattern
 3. The change can **affect analytical conclusions** — not just cosmetic differences
 4. The change is **documented** — there is an official `NEWS.md` or changelog entry
+   and the PR must quote the relevant excerpt
 
 ### What does not belong
 
@@ -144,6 +133,7 @@ erode trust in the tool. Prefer narrower windows when in doubt.
 - Cosmetic changes to printed output only
 - Performance changes with no effect on results
 - Changes without official documentation
+- New arguments or features that are purely additive (existing code unaffected)
 
 ---
 
