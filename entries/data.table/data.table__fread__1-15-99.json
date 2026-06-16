@@ -1,0 +1,11 @@
+{
+  "pkg": "data.table",
+  "fn": "fread",
+  "from_version": "1.15.99",
+  "to_version": "1.18.9",
+  "risk": "low",
+  "description": "In data.table 1.16.0, fread() changed its default decimal separator handling to dec='auto', which automatically detects whether the file uses '.' or ',' as the decimal separator. Files using comma-decimal notation (common in European/South American locales) that previously parsed numeric columns as character or silently incorrect values may now parse differently. Code that relied on fread() NOT auto-detecting comma decimals, or that post-processed character columns expecting the old behaviour, may see different output.",
+  "reference": "https://github.com/Rdatatable/data.table/blob/master/NEWS.md",
+  "added_by": "ndohpenngit",
+  "added_date": "2026-06-16"
+}
