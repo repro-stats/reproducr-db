@@ -3,9 +3,9 @@
   "fn": "str_c",
   "from_version": "1.4.99",
   "to_version": "1.6.9",
-  "risk": "high",
-  "description": "In stringr 1.5.0, str_c() changed NA handling to match base paste(): str_c('a', NA) now returns NA instead of 'aNa'. Code that relied on the old behaviour to build strings containing 'NA' will silently produce different (NA-propagating) results.",
+  "risk": "medium",
+  "description": "In stringr 1.5.0, str_c() changed how it handles NULL inputs: NULLs are now silently ignored rather than treated as zero-length vectors. Code that passed NULL to str_c() expecting it to act as a length-0 vector (e.g. in conditional string-building patterns) will silently produce different output. Note: the separate NA-propagation behaviour (str_c('x', NA) returning NA) has been the default since stringr 1.0.0 -- use str_replace_na() on inputs if the old 'xNA' concatenation is needed.",
   "reference": "https://stringr.tidyverse.org/news/index.html",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-01"
+  "added_date": "2026-06-16"
 }

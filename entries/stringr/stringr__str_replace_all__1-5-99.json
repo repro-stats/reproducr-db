@@ -1,0 +1,11 @@
+{
+  "pkg": "stringr",
+  "fn": "str_replace_all",
+  "from_version": "1.5.99",
+  "to_version": "1.6.9",
+  "risk": "high",
+  "description": "In stringr 1.6.0, str_replace_all() with a function as the replacement argument changed: the function now receives all matches from the entire input vector in a single call, rather than one call per match. Code using a replacement function that relies on state, side effects, or sequential per-match processing (e.g. a counter or accumulator) will silently produce wrong results. Stateless vectorised replacement functions are unaffected.",
+  "reference": "https://stringr.tidyverse.org/news/index.html",
+  "added_by": "ndohpenngit",
+  "added_date": "2026-06-16"
+}
