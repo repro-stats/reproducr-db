@@ -4,8 +4,8 @@
   "from_version": "3.1.99",
   "to_version": "3.8.9",
   "risk": "low",
-  "description": "In survival 3.2.0, coxph() updated its default handling of the robust variance estimator for weighted models. Models with non-integer weights (e.g., IPTW or matching weights) may return slightly different standard errors and confidence intervals compared to survival 3.1.x. The change is small but affects exact numerical reproducibility.",
-  "reference": "https://cran.r-project.org/web/packages/survival/news/news.html",
+  "description": "In survival 3.2-9, coxph() changed its default handling of 0/1 predictors: they are no longer recentered (fit$mean is now 0 for binary predictors, rather than the column mean). Code that uses fit$mean for prediction centering, or calls survfit(fit) without specifying newdata for a model with binary/factor predictors, may silently produce different results. Use the nocenter argument to control this behavior explicitly.",
+  "reference": "https://cran.r-project.org/web/packages/survival/news.html",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-04"
+  "added_date": "2026-06-16"
 }
