@@ -1,0 +1,11 @@
+{
+  "pkg": "cobalt",
+  "fn": "bal.tab",
+  "from_version": "4.3.99",
+  "to_version": "4.6.9",
+  "risk": "low",
+  "description": "In cobalt 4.4.1, bal.tab() changed the default value of the disp.call argument from TRUE to FALSE, meaning the original balancing function call is now hidden in printed output by default. Code that parses the printed output of bal.tab() to extract or display the call will no longer see it without explicitly setting disp.call = TRUE. This affects only printed/console output, not the underlying bal.tab object.",
+  "reference": "https://ngreifer.github.io/cobalt/news/index.html",
+  "added_by": "ndohpenngit",
+  "added_date": "2026-06-16"
+}
