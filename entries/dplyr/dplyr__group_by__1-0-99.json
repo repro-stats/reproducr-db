@@ -2,10 +2,10 @@
   "pkg": "dplyr",
   "fn": "group_by",
   "from_version": "1.0.99",
-  "to_version": "1.1.9",
+  "to_version": "1.2.1",
   "risk": "medium",
-  "description": "In dplyr 1.1.0, arrange() and group_by() changed to order character vectors using the C locale instead of the system locale. Code that groups or sorts by character columns (especially with accented characters or mixed case) may silently produce a different row order than under dplyr 1.0.x. Set options(dplyr.legacy_locale = TRUE) to revert, or use arrange(.locale = ) to control explicitly.",
-  "reference": "https://dplyr.tidyverse.org/reference/group_by.html",
+  "description": "group_by() now orders character vector grouping columns using the C locale instead of the system locale (change introduced in 1.1.0). Code relying on system-locale ordering of grouped character columns will produce different results. The dplyr.legacy_locale escape hatch is itself soft-deprecated as of 1.2.x.",
+  "reference": "https://dplyr.tidyverse.org/news/index.html",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-11"
+  "added_date": "2026-06-17"
 }
