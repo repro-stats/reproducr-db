@@ -1,0 +1,11 @@
+{
+  "pkg": "dplyr",
+  "fn": "filter",
+  "from_version": "0.8.5",
+  "to_version": "1.2.9",
+  "risk": "medium",
+  "description": "filter() forbids matrix results and warns about data frame results (especially from across()); users should use if_any() or if_all() instead. Breaking change introduced in dplyr 1.0.8.",
+  "reference": "https://dplyr.tidyverse.org/news/index.html",
+  "added_by": "ndohpenngit",
+  "added_date": "2026-06-17"
+}
