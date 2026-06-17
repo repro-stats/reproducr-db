@@ -25,8 +25,7 @@ import datetime
 from pathlib import Path
 
 import anthropic
-from github import Github, GithubException
-
+from github import Github, Auth, GithubException
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -366,7 +365,7 @@ def main():
           f"({'dry run' if dry_run else 'live'})...\n")
 
     anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    gh_client = Github(os.environ["GITHUB_TOKEN"]) if not dry_run else None
+    gh_client = Github(auth=Auth.Token(os.environ["GITHUB_TOKEN"])) if not dry_run else None
 
     results = {"success": [], "skipped": [], "failed": []}
 
