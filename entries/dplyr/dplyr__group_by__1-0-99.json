@@ -4,7 +4,7 @@
   "from_version": "1.0.99",
   "to_version": "1.2.1",
   "risk": "medium",
-  "description": "group_by() now orders character vector grouping columns using the C locale instead of the system locale (change introduced in 1.1.0). Code relying on system-locale ordering of grouped character columns will produce different results. The dplyr.legacy_locale escape hatch is itself soft-deprecated as of 1.2.x.",
+  "description": "In dplyr 1.1.0, character vector grouping columns in group_by() are now ordered in the C locale instead of the system locale, which can silently change the ordering of grouped results. The dplyr.legacy_locale escape hatch was soft-deprecated in 1.2.0, reinforcing that this change is permanent through the current release series.",
   "reference": "https://dplyr.tidyverse.org/news/index.html",
   "added_by": "ndohpenngit",
   "added_date": "2026-06-17"
