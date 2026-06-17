@@ -46,11 +46,11 @@ jobs:
 
       - name: Install R dependencies
         env:
-          GITHUB_PAT: ${{ secrets.CROSS_REPO_PAT }}   # ← add this
+          GITHUB_PAT: ${{ secrets.CROSS_REPO_PAT }}
         run: |
           Rscript -e "
             install.packages('remotes')
-            install.packages(c('jsonlite'))
+            install.packages('jsonlite')
             remotes::install_github('repro-stats/reproducr',
                                     quiet        = TRUE,
                                     force        = TRUE,
@@ -85,18 +85,18 @@ jobs:
 
             if (nrow(stale) == 0L) {
               cat('No stale entries found.\n')
-              write('false', Sys.getenv('GITHUB_OUTPUT'), append = TRUE)
+              cat('has_stale=false\n',
+                  file = Sys.getenv('GITHUB_OUTPUT'), append = TRUE)
             } else {
               cat(sprintf('%d stale entries found.\n', nrow(stale)))
               writeLines(toJSON(stale, auto_unbox = TRUE), 'stale_entries.json')
-              write('true', Sys.getenv('GITHUB_OUTPUT'), append = TRUE)
+              cat('has_stale=true\n',
+                  file = Sys.getenv('GITHUB_OUTPUT'), append = TRUE)
             }
-          " >> $GITHUB_OUTPUT 2>&1
-        env:
-          GITHUB_OUTPUT: ${{ env.GITHUB_OUTPUT }}
+          "
 
       - name: Run remediation agent
-        if: steps.stale.outputs.* != 'false'
+        if: steps.stale.outputs.has_stale == 'true'
         run: |
           python scripts/remediate_staleness.py \
             --stale-file stale_entries.json \
