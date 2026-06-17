@@ -1,0 +1,11 @@
+{
+  "pkg": "dplyr",
+  "fn": "select",
+  "from_version": "0.8.5",
+  "to_version": "1.2.9",
+  "risk": "medium",
+  "description": "dplyr::select() switched to the new tidyselect interface in 1.0.0, enabling Boolean logic (!, &, |) and where()-wrapped predicates. Code relying on the legacy vars_select() behaviour or passing bare predicate functions without where() will break.",
+  "reference": "https://dplyr.tidyverse.org/news/index.html",
+  "added_by": "ndohpenngit",
+  "added_date": "2026-06-17"
+}
