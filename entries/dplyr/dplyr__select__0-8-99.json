@@ -1,0 +1,11 @@
+{
+  "pkg": "dplyr",
+  "fn": "select",
+  "from_version": "0.8.99",
+  "to_version": "1.2.9",
+  "risk": "medium",
+  "description": "In dplyr 1.0.0, select() switched to the tidyselect backend. Selecting columns via an external character vector without wrapping it in all_of() or any_of() now triggers ambiguous selection: if the variable name matches a column name the column wins, otherwise it is silently dropped. Code using select(df, my_vars) where my_vars is a character vector must be updated to select(df, all_of(my_vars)) for safe, reproducible column selection.",
+  "reference": "https://dplyr.tidyverse.org/news/index.html#dplyr-100",
+  "added_by": "ndohpenngit",
+  "added_date": "2026-06-17"
+}

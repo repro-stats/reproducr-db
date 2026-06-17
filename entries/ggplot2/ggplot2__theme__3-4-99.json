@@ -1,0 +1,11 @@
+{
+  "pkg": "ggplot2",
+  "fn": "theme",
+  "from_version": "3.4.99",
+  "to_version": "4.0.9",
+  "risk": "medium",
+  "description": "In ggplot2 3.5.0, passing a numeric vector to legend.position inside theme() (e.g. theme(legend.position = c(0.8, 0.2))) was deprecated. The correct replacement is the new legend.position.inside argument: theme(legend.position.inside = c(0.8, 0.2)). Code using the old numeric form produces a once-per-session deprecation warning and may break in a future release. Plots with in-panel legend placement will silently produce different visual output or errors after upgrading without updating the theme() call.",
+  "reference": "https://www.tidyverse.org/blog/2024/02/ggplot2-3-5-0-legends/",
+  "added_by": "ndohpenngit",
+  "added_date": "2026-06-17"
+}

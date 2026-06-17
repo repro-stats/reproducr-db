@@ -1,0 +1,11 @@
+{
+  "pkg": "tidyr",
+  "fn": "pivot_longer",
+  "from_version": "1.2.99",
+  "to_version": "1.3.9",
+  "risk": "medium",
+  "description": "In tidyr 1.3.0, the ... argument of pivot_longer() was moved to appear after the required arguments but before optional ones. Code relying on positional argument matching for optional parameters after names_to may silently pass values to the wrong argument. Additionally, values_ptypes = list() and names_ptypes = list() no longer mean NULL: an empty list() is now interpreted as a <list> prototype applied to all columns, changing type coercion behaviour for scripts that relied on the old interpretation.",
+  "reference": "https://tidyr.tidyverse.org/news/index.html#tidyr-130",
+  "added_by": "ndohpenngit",
+  "added_date": "2026-06-17"
+}
