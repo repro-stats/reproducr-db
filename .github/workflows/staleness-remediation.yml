@@ -45,13 +45,16 @@ jobs:
           use-public-rspm: true
 
       - name: Install R dependencies
+        env:
+          GITHUB_PAT: ${{ secrets.CROSS_REPO_PAT }}
         run: |
           Rscript -e "
             install.packages('remotes')
+            install.packages(c('jsonlite'))
             remotes::install_github('repro-stats/reproducr',
-                                    quiet = TRUE, force = TRUE,
+                                    quiet        = TRUE,
+                                    force        = TRUE,
                                     dependencies = TRUE)
-            install.packages('jsonlite')
           "
 
       - uses: actions/setup-python@v5
