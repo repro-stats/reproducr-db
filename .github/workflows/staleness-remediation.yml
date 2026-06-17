@@ -1,0 +1,105 @@
+name: Staleness remediation agent
+
+on:
+  # Run automatically after the staleness check finds issues
+  workflow_run:
+    workflows: ["Database staleness check"]
+    types: [completed]
+
+  # Also allow manual trigger with optional package filter
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Comma-separated package names to remediate (blank = all stale)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run — analyse only, do not open PRs'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+
+jobs:
+  remediate:
+    # Only run if staleness check actually found stale entries (or manual trigger)
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          fetch-depth: 0
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+
+      - name: Install R dependencies
+        run: |
+          Rscript -e "
+            install.packages('remotes')
+            remotes::install_github('repro-stats/reproducr',
+                                    quiet = TRUE, force = TRUE,
+                                    dependencies = TRUE)
+            install.packages('jsonlite')
+          "
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install anthropic PyGithub
+
+      - name: Get stale entries
+        id: stale
+        run: |
+          Rscript -e "
+            library(reproducr)
+            library(jsonlite)
+
+            pkgs_input <- '${{ github.event.inputs.packages }}'
+            pkgs <- if (nchar(trimws(pkgs_input)) == 0L) NULL else
+                    trimws(strsplit(pkgs_input, ',')[[1]])
+
+            result <- check_db_staleness(
+              packages = pkgs,
+              source   = 'cran',
+              verbose  = FALSE
+            )
+
+            stale <- result[result\$status %in% c('stale_ceiling', 'stale_floor'), ]
+
+            if (nrow(stale) == 0L) {
+              cat('No stale entries found.\n')
+              write('false', Sys.getenv('GITHUB_OUTPUT'), append = TRUE)
+            } else {
+              cat(sprintf('%d stale entries found.\n', nrow(stale)))
+              writeLines(toJSON(stale, auto_unbox = TRUE), 'stale_entries.json')
+              write('true', Sys.getenv('GITHUB_OUTPUT'), append = TRUE)
+            }
+          " >> $GITHUB_OUTPUT 2>&1
+        env:
+          GITHUB_OUTPUT: ${{ env.GITHUB_OUTPUT }}
+
+      - name: Run remediation agent
+        if: steps.stale.outputs.* != 'false'
+        run: |
+          python scripts/remediate_staleness.py \
+            --stale-file stale_entries.json \
+            --entries-dir entries \
+            --dry-run ${{ github.event.inputs.dry_run || 'false' }} \
+            --repo ${{ github.repository }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
