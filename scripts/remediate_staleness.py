@@ -80,8 +80,10 @@ For each entry you receive:
   field(s) relevant to the action.
 - added_date in corrected_entry must reflect today's date.
 
-## Response format
-Respond with valid JSON only — no prose, no markdown fences:
+## Response format — IMPORTANT
+Your FINAL response must be a JSON object and nothing else.
+No prose before or after. No markdown fences. No explanation.
+Just the raw JSON object:
 {
   "action": "raise_floor|extend_ceiling|close|no_change",
   "rationale": "One sentence citing the specific changelog evidence.",
@@ -89,6 +91,30 @@ Respond with valid JSON only — no prose, no markdown fences:
 }
 For close or no_change, set corrected_entry to null.
 """
+
+
+# ── JSON parsing helper ───────────────────────────────────────────────────────
+
+def _parse_json(text: str) -> dict | None:
+    """Extract and parse the first JSON object found in text."""
+    if not text:
+        return None
+    # Strip markdown fences
+    text = re.sub(r"^```(?:json)?\s*", "", text.strip())
+    text = re.sub(r"\s*```$", "", text.strip())
+    # Try full text first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Try finding a {...} block
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+    return None
 
 
 # ── Claude call ──────────────────────────────────────────────────────────────
@@ -111,40 +137,60 @@ Gap description:  {entry.get('gap', 'N/A')}
 Today's date:     {today}
 
 Steps:
-1. Search for the official changelog using the reference URL:
-   {entry.get('reference', 'search for ' + entry['pkg'] + ' changelog')}
+1. Use web_search to fetch the changelog at: \
+{entry.get('reference', 'search for ' + entry['pkg'] + ' changelog')}
 2. Verify the breaking change and version window.
-3. Return your remediation as JSON (no prose, no markdown).
+3. Output your final answer as a raw JSON object only — \
+no prose before or after, no markdown fences.
 """
+
+    messages = [{"role": "user", "content": user_message}]
 
     response = client.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
         tools=[{"type": "web_search_20250305", "name": "web_search"}],
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
+        messages=messages,
     )
 
-    # Extract the final text block (after any tool use)
+    # Search all text blocks for JSON
     text_blocks = [b.text for b in response.content if b.type == "text"]
-    if not text_blocks:
-        print(f"  ✗ No text response from Claude for {entry['pkg']}::{entry['fn']}")
-        return None
+    raw = "\n".join(text_blocks).strip()
+    result = _parse_json(raw)
 
-    raw = text_blocks[-1].strip()
+    # If no JSON found, send a follow-up turn forcing JSON-only output
+    if result is None:
+        print(f"  ↩ No JSON in initial response — requesting JSON-only follow-up")
+        messages.append({"role": "assistant", "content": response.content})
+        messages.append({
+            "role": "user",
+            "content": (
+                "You have completed your research. Now output your final answer "
+                "as a raw JSON object only — no prose, no markdown fences, "
+                "nothing before or after the JSON.\n\n"
+                "Required format:\n"
+                '{"action": "raise_floor|extend_ceiling|close|no_change", '
+                '"rationale": "one sentence citing changelog evidence", '
+                '"corrected_entry": { ...full entry... } or null}'
+            )
+        })
+        response2 = client.messages.create(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            messages=messages,
+        )
+        text_blocks2 = [b.text for b in response2.content if b.type == "text"]
+        raw2 = "\n".join(text_blocks2).strip()
+        result = _parse_json(raw2)
 
-    # Strip markdown fences if present
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
+        if result is None:
+            print(f"  ✗ Could not parse Claude response after follow-up for "
+                  f"{entry['pkg']}::{entry['fn']}")
+            print(f"  Raw: {raw2[:400]}")
 
-    try:
-        result = json.loads(raw)
-        return result
-    except json.JSONDecodeError as e:
-        print(f"  ✗ Could not parse Claude response for "
-              f"{entry['pkg']}::{entry['fn']}: {e}")
-        print(f"  Raw response: {raw[:300]}")
-        return None
+    return result
 
 
 # ── File path helpers ─────────────────────────────────────────────────────────
@@ -176,13 +222,10 @@ def create_pr(
     base: str,
     title: str,
     body: str,
-    files: list[tuple[str, str]],  # list of (path, content)
+    files: list[tuple[str, str]],
     files_to_delete: list[str] = None,
 ) -> str:
-    """
-    Create a branch, commit files, and open a PR.
-    Returns the PR URL.
-    """
+    """Create a branch, commit files, and open a PR. Returns the PR URL."""
     repo = gh.get_repo(repo_name)
     base_sha = repo.get_branch(base).commit.sha
 
@@ -190,7 +233,7 @@ def create_pr(
     try:
         repo.create_git_ref(ref=f"refs/heads/{branch}", sha=base_sha)
     except GithubException as e:
-        if e.status == 422:  # Branch already exists
+        if e.status == 422:
             print(f"  Branch {branch} already exists, reusing.")
         else:
             raise
@@ -225,9 +268,8 @@ def create_pr(
                 branch=branch,
             )
         except GithubException:
-            pass  # File may not exist on branch yet
+            pass
 
-    # Open PR
     pr = repo.create_pull(
         title=title,
         body=body,
@@ -240,7 +282,7 @@ def create_pr(
 # ── PR body builder ───────────────────────────────────────────────────────────
 
 def build_pr_body(entry: dict, remediation: dict) -> str:
-    action = remediation["action"]
+    action    = remediation["action"]
     rationale = remediation["rationale"]
     corrected = remediation.get("corrected_entry")
 
@@ -290,7 +332,10 @@ issue once this PR is merged.
 - [ ] Tracking issue updated
 """
     if corrected:
-        body += f"\n## Corrected entry\n\n```json\n{json.dumps(corrected, indent=2)}\n```\n"
+        body += (
+            f"\n## Corrected entry\n\n"
+            f"```json\n{json.dumps(corrected, indent=2)}\n```\n"
+        )
 
     return body
 
@@ -298,17 +343,18 @@ issue once this PR is merged.
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="reproducr-db staleness remediation agent")
-    parser.add_argument("--stale-file",  required=True, help="Path to stale_entries.json")
-    parser.add_argument("--entries-dir", required=True, help="Path to entries/ directory")
-    parser.add_argument("--dry-run",     default="false", help="true = analyse only, no PRs")
-    parser.add_argument("--repo",        required=True, help="GitHub repo (owner/name)")
+    parser = argparse.ArgumentParser(
+        description="reproducr-db staleness remediation agent"
+    )
+    parser.add_argument("--stale-file",  required=True)
+    parser.add_argument("--entries-dir", required=True)
+    parser.add_argument("--dry-run",     default="false")
+    parser.add_argument("--repo",        required=True)
     args = parser.parse_args()
 
-    dry_run = args.dry_run.lower() == "true"
+    dry_run     = args.dry_run.lower() == "true"
     entries_dir = Path(args.entries_dir)
 
-    # Load stale entries
     with open(args.stale_file) as f:
         stale_entries = json.load(f)
 
@@ -328,7 +374,6 @@ def main():
         key = f"{entry['pkg']}::{entry['fn']}"
         print(f"→ {key} ({entry['status']})")
 
-        # Ask Claude
         remediation = remediate_entry(anthropic_client, entry)
         if remediation is None:
             print(f"  ✗ Agent failed — skipping\n")
@@ -349,22 +394,20 @@ def main():
             results["success"].append(key)
             continue
 
-        # Determine file paths
         corrected = remediation.get("corrected_entry")
         if not corrected:
-            print(f"  ✗ No corrected entry provided for action '{action}' — skipping\n")
+            print(f"  ✗ No corrected entry for action '{action}' — skipping\n")
             results["failed"].append(key)
             continue
 
-        new_from  = corrected["from_version"]
-        new_to    = corrected["to_version"]
-        pkg       = corrected["pkg"]
-        fn        = corrected["fn"]
+        pkg      = corrected["pkg"]
+        fn       = corrected["fn"]
+        new_from = corrected["from_version"]
 
-        new_path = f"entries/{pkg}/{pkg}__{fn}__{version_to_dashes(new_from)}.json"
+        new_path     = f"entries/{pkg}/{pkg}__{fn}__{version_to_dashes(new_from)}.json"
         old_path_obj = old_filepath(entries_dir, pkg, fn, entry["from_version"])
-        old_path = (f"entries/{pkg}/{old_path_obj.name}"
-                    if old_path_obj else None)
+        old_path     = (f"entries/{pkg}/{old_path_obj.name}"
+                        if old_path_obj else None)
 
         files_to_delete = (
             [old_path]
@@ -372,11 +415,9 @@ def main():
             else []
         )
 
-        # Branch name
         safe_key = f"{pkg}-{fn}".replace("::", "-").replace(".", "-")
-        branch = f"fix/db-staleness-{safe_key}-{datetime.date.today().isoformat()}"
+        branch   = f"fix/db-staleness-{safe_key}-{datetime.date.today().isoformat()}"
 
-        # PR details
         action_prefixes = {
             "raise_floor":    "fix(db): raise from_version",
             "extend_ceiling": "fix(db): extend to_version",
@@ -391,8 +432,6 @@ def main():
         if action == "close":
             corrected["closed"] = True
 
-        files = [(new_path, json.dumps(corrected, indent=2))]
-
         try:
             pr_url = create_pr(
                 gh=gh_client,
@@ -401,7 +440,7 @@ def main():
                 base="main",
                 title=pr_title,
                 body=pr_body,
-                files=files,
+                files=[(new_path, json.dumps(corrected, indent=2))],
                 files_to_delete=files_to_delete,
             )
             print(f"  ✓ PR opened: {pr_url}\n")
@@ -410,7 +449,6 @@ def main():
             print(f"  ✗ Failed to create PR: {e}\n")
             results["failed"].append(key)
 
-    # Summary
     print("─" * 60)
     print(f"Complete: {len(results['success'])} PRs opened, "
           f"{len(results['skipped'])} skipped (no change), "
