@@ -4,7 +4,7 @@
   "from_version": "0.8.5",
   "to_version": "1.2.9",
   "risk": "medium",
-  "description": "dplyr::select() switched to the new tidyselect interface in 1.0.0, enabling Boolean logic (!, &, |) and where()-wrapped predicates. Code relying on the legacy vars_select() behaviour or passing bare predicate functions without where() will break.",
+  "description": "dplyr::select() adopted the new tidyselect interface in 1.0.0, adding support for Boolean operators (!, &, |) and predicate functions via where(). Code using the old bare-external-vector or pre-tidyselect-1.0 patterns (e.g. passing a plain character vector without all_of(), using bare predicates without where()) written against <=0.8.5 will error or warn on >=1.0.0.",
   "reference": "https://dplyr.tidyverse.org/news/index.html",
   "added_by": "ndohpenngit",
   "added_date": "2026-06-17"
