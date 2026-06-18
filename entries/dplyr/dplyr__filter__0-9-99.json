@@ -1,0 +1,11 @@
+{
+  "pkg": "dplyr",
+  "fn": "filter",
+  "from_version": "0.9.99",
+  "to_version": "1.2.9",
+  "risk": "medium",
+  "description": "filter() errors on named arguments (= instead of ==), forbids matrix results, and deprecates across() usage inside filter(); breaking behaviour introduced in dplyr 1.0.0.",
+  "reference": "https://dplyr.tidyverse.org/news/index.html",
+  "added_by": "ndohpenngit",
+  "added_date": "2026-06-18"
+}
