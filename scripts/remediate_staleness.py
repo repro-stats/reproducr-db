@@ -29,7 +29,7 @@ from github import Github, Auth, GithubException
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-MODEL = "claude-sonnet-4-6"
+MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 2048
 
 SYSTEM_PROMPT = """\
@@ -62,12 +62,21 @@ For each entry you receive:
 1. Use web_search to fetch the official changelog at the reference URL.
 2. Verify whether the breaking change still applies in new versions.
 3. Choose one action:
-   - raise_floor:     stale_floor — raise from_version to the last patch
-                      of the minor release just before the breaking change.
-                      Always use the X.Y.99 sentinel pattern — never set
-                      from_version to an actual released version number.
-                      Example: breaking change in 1.0.0 → set from_version
-                      to "0.9.99", not to the last real patch like "0.8.5".
+   - raise_floor:     stale_floor — raise from_version to the X.Y.99
+                      sentinel for the minor series immediately before
+                      the breaking change (e.g. breaking change in
+                      1.0.0 → set from_version to "0.9.99").
+                      Always use the X.Y.99 sentinel pattern — never
+                      set from_version to an actual released version.
+                      IMPORTANT: before raising, verify that the
+                      intermediate minor series actually existed on
+                      CRAN. If the package jumped directly (e.g.
+                      0.8.x → 1.0.0 with no 0.9.x releases), then
+                      raising the sentinel is cosmetic only and
+                      no_change is correct. In that case, state
+                      explicitly in the rationale that no intermediate
+                      series existed and the current sentinel already
+                      correctly bounds the window.
    - extend_ceiling:  stale_ceiling — extend to_version to cover the
                       current release series if the change still applies.
    - close:           ONLY if the entire window is archaeologically
