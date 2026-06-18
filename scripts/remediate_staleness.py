@@ -64,6 +64,10 @@ For each entry you receive:
 3. Choose one action:
    - raise_floor:     stale_floor — raise from_version to the last patch
                       of the minor release just before the breaking change.
+                      Always use the X.Y.99 sentinel pattern — never set
+                      from_version to an actual released version number.
+                      Example: breaking change in 1.0.0 → set from_version
+                      to "0.9.99", not to the last real patch like "0.8.5".
    - extend_ceiling:  stale_ceiling — extend to_version to cover the
                       current release series if the change still applies.
    - close:           ONLY if the entire window is archaeologically
