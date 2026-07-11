@@ -407,6 +407,19 @@ def create_pr(
         except GithubException:
             pass
 
+    # Check for an existing open PR on this branch before creating a new one.
+    # A branch reused from a previous run will already have a PR — return its
+    # URL rather than failing with a 422 duplicate error.
+    owner_login = repo.owner.login
+    existing_prs = list(repo.get_pulls(
+        state="open",
+        head=f"{owner_login}:{branch}",
+    ))
+    if existing_prs:
+        pr_url = existing_prs[0].html_url
+        print(f"  → PR already open: {pr_url}")
+        return pr_url
+
     pr = repo.create_pull(
         title=title,
         body=body,
@@ -615,7 +628,7 @@ def main():
                 files=[(new_path, json.dumps(corrected, indent=2))],
                 files_to_delete=files_to_delete,
             )
-            print(f"  ✓ PR opened: {pr_url}\n")
+            print(f"  ✓ PR: {pr_url}\n")
             results["success"].append(key)
         except Exception as e:
             print(f"  ✗ Failed to create PR: {e}\n")
