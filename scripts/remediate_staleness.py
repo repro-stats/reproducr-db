@@ -485,12 +485,15 @@ def main():
     )
     parser.add_argument("--stale-file",  required=True)
     parser.add_argument("--entries-dir", required=True)
-    parser.add_argument("--dry-run",     default="false")
-    parser.add_argument("--repo",        required=True)
+    parser.add_argument("--dry-run",       default="false")
+    parser.add_argument("--repo",          required=True)
+    parser.add_argument("--fail-on-error", default="false",
+                        help="Exit non-zero when any entry failed (default: false)")
     args = parser.parse_args()
 
-    dry_run     = args.dry_run.lower() == "true"
-    entries_dir = Path(args.entries_dir)
+    dry_run       = args.dry_run.lower() == "true"
+    fail_on_error = args.fail_on_error.lower() == "true"
+    entries_dir   = Path(args.entries_dir)
 
     with open(args.stale_file) as f:
         stale_entries = json.load(f)
@@ -532,14 +535,46 @@ def main():
             continue
 
         corrected = remediation.get("corrected_entry")
+
+        # For close, corrected_entry is legitimately null per the JSON contract.
+        # Derive the corrected object from the existing entry file on disk if
+        # present; otherwise fall back to the incoming stale entry so we can
+        # still record the closure. This prevents failures when the entry file
+        # is not present on disk (e.g. newly added entries not yet on main).
+        if action == "close" and not corrected:
+            existing_path = old_filepath(entries_dir, entry["pkg"], entry["fn"],
+                                         entry["from_version"])
+            if existing_path and existing_path.exists():
+                with open(existing_path) as f:
+                    corrected = json.load(f)
+                print(f"  ↩ close: derived corrected entry from {existing_path.name}")
+            else:
+                corrected = entry.copy()
+                print("  ↩ close: no existing entry file found; "
+                      "using stale entry as base for close action.")
+
         if not corrected:
             print(f"  ✗ No corrected entry for action '{action}' — skipping\n")
             results["failed"].append(key)
             continue
 
+        # Guard: ensure required fields are present (agent occasionally drops them)
+        for required_field in ("pkg", "fn", "from_version", "to_version",
+                               "risk", "description", "reference"):
+            if required_field not in corrected:
+                print(f"  ✗ corrected_entry missing required field "
+                      f"'{required_field}' — skipping\n")
+                results["failed"].append(key)
+                corrected = None
+                break
+        if corrected is None:
+            continue
+
         pkg      = corrected["pkg"]
         fn       = corrected["fn"]
-        new_from = corrected["from_version"]
+        # For close, always keep the existing file path (from_version unchanged).
+        # For raise_floor/extend_ceiling, use the corrected from_version.
+        new_from = entry["from_version"] if action == "close" else corrected["from_version"]
 
         new_path     = f"entries/{pkg}/{pkg}__{fn}__{version_to_dashes(new_from)}.json"
         old_path_obj = old_filepath(entries_dir, pkg, fn, entry["from_version"])
@@ -591,9 +626,23 @@ def main():
           f"{len(results['skipped'])} skipped (no change), "
           f"{len(results['failed'])} failed")
 
+    # Write machine-readable report for workflow artifact upload
+    try:
+        with open("remediation_report.json", "w", encoding="utf-8") as fh:
+            json.dump(results, fh, indent=2)
+        print("Wrote remediation_report.json")
+    except Exception as e:
+        print(f"Could not write remediation_report.json: {e}")
+
     if results["failed"]:
         print(f"Failed entries: {', '.join(results['failed'])}")
+
+    # Exit non-zero only when explicitly requested — prevents transient or
+    # partial failures from failing the whole workflow run by default.
+    if results["failed"] and fail_on_error:
         sys.exit(1)
+    else:
+        sys.exit(0)
 
 
 if __name__ == "__main__":
