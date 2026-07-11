@@ -4,7 +4,9 @@
   "fn": "geom_sf",
   "from_version": "3.3.99",
   "to_version": "4.0.9",
-  "current_version": "4.0.3",
-  "status": "stale_ceiling",
-  "gap": "extended from 3.4.9 to 4.0.9"
+  "risk": "medium",
+  "description": "In ggplot2 3.4.0, the size aesthetic for geom_sf() was changed to affect only point size, not linewidth. The default linewidth for polygons was decreased from 0.5 to 0.2. Code that relied on size to control line width will produce visually different output.",
+  "reference": "https://tidyverse.org/blog/2022/11/ggplot2-3-4-0/",
+  "added_by": "ndohpenngit",
+  "added_date": "YYYY-MM-DD"
 }
