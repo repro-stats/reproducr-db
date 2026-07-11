@@ -7,5 +7,6 @@
   "description": "In purrr 1.0.0, map2() adopted tidyverse recycling rules: only length-1 vectors are recycled; all others must have the same length. Code relying on implicit recycling of vectors whose length is a multiple of the other will now error. Additionally, map2() now recycles the names of its first input, which can produce differently-named output lists compared to purrr < 1.0.0.",
   "reference": "https://purrr.tidyverse.org/news/index.html#purrr-100",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-17"
+  "added_date": "2026-06-17",
+  "closed": true
 }
