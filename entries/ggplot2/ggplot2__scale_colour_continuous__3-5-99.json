@@ -7,5 +7,6 @@
   "description": "In ggplot2 4.0.0, the default colour and fill scales gained a palette argument; the new default (palette = NULL) retrieves palettes from the active theme rather than using a hardcoded default, and this is now the default for generic scales like scale_colour_continuous()/scale_fill_continuous(). Plots using a customised theme palette setting (theme(palette.colour.continuous = ...) or similar) may now silently receive different default colours than under ggplot2 3.5.x, even without changing scale calls.",
   "reference": "https://ggplot2.tidyverse.org/news/index.html#ggplot2-400",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-11"
+  "added_date": "2026-06-11",
+  "closed": true
 }
