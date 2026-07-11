@@ -7,5 +7,6 @@
   "description": "In tidyr 1.0.0, unnest() was rewritten. The old interface (passing multiple columns positionally) changed; .drop and .id arguments were removed. Code using the old unnest() API may silently change structure.",
   "reference": "https://tidyr.tidyverse.org/news/index.html",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-01"
+  "added_date": "2026-06-01",
+  "closed": true
 }
