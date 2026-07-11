@@ -1,0 +1,11 @@
+{
+  "pkg": "purrr",
+  "fn": "map_df",
+  "from_version": "0.99.99",
+  "to_version": "1.2.9",
+  "risk": "medium",
+  "description": "map_df, map_dfr, map_dfc and related functions were superseded in purrr 1.0.0 in favor of using map() with list_rbind() or list_cbind(). Superseded functions will not be removed but receive only critical bug fixes.",
+  "reference": "https://tidyverse.org/blog/2022/12/purrr-1-0-0/",
+  "added_by": "ndohpenngit",
+  "added_date": "YYYY-MM-DD"
+}
