@@ -1,0 +1,12 @@
+{
+  "key": "survival::survfit",
+  "pkg": "survival",
+  "fn": "survfit",
+  "from_version": "3.5.99",
+  "to_version": "3.8.9",
+  "risk": "medium",
+  "description": "In version 3.6-2, survfit() and related functions (coxph, concordance, survcheck, survdiff) changed to automatically use survival namespace versions for Surv(), strata(), cluster(), pspline() and tt() model terms in formulas. Any explicit use of survival::strata() or similar is preprocessed to remove the namespace prefix. This breaks code that relies on the old behavior where these functions needed explicit namespace specification.",
+  "reference": "https://github.com/insightsengineering/tern/issues/1366",
+  "added_by": "ndohpenngit",
+  "added_date": "YYYY-MM-DD"
+}
