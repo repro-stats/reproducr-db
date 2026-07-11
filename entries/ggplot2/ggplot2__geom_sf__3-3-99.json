@@ -1,12 +1,11 @@
 {
-  "key": "ggplot2::geom_sf",
   "pkg": "ggplot2",
   "fn": "geom_sf",
   "from_version": "3.3.99",
   "to_version": "4.0.9",
   "risk": "medium",
-  "description": "In ggplot2 3.4.0, the size aesthetic for geom_sf() was changed to affect only point size, not linewidth. The default linewidth for polygons was decreased from 0.5 to 0.2. Code that relied on size to control line width will produce visually different output.",
-  "reference": "https://tidyverse.org/blog/2022/11/ggplot2-3-4-0/",
+  "description": "In ggplot2 3.4.0+, the size aesthetic for geom_sf() was changed: size now only affects point sizing, not linestring/polygon line width. The default line width for polygons was decreased from default to 0.2. Users upgrading from 3.3.x will see visual changes in existing plots using size= with sf geometries.",
+  "reference": "https://github.com/tidyverse/ggplot2/releases/tag/v3.4.0",
   "added_by": "ndohpenngit",
   "added_date": "YYYY-MM-DD"
 }
