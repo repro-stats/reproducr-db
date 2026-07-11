@@ -19,6 +19,12 @@ on:
         default: 'false'
         type: choice
         options: ['true', 'false']
+      fail_on_error:
+        description: 'Fail the workflow if any entry could not be remediated'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
 
 jobs:
   remediate:
@@ -95,6 +101,13 @@ jobs:
             }
           "
 
+      - name: Upload stale entries
+        if: steps.stale.outputs.has_stale == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: stale_entries
+          path: stale_entries.json
+
       - name: Run remediation agent
         if: steps.stale.outputs.has_stale == 'true'
         run: |
@@ -102,7 +115,15 @@ jobs:
             --stale-file stale_entries.json \
             --entries-dir entries \
             --dry-run ${{ github.event.inputs.dry_run || 'false' }} \
-            --repo ${{ github.repository }}
+            --repo ${{ github.repository }} \
+            --fail-on-error ${{ github.event.inputs.fail_on_error || 'false' }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
+
+      - name: Upload remediation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remediation_report
+          path: remediation_report.json
