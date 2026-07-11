@@ -1,12 +1,12 @@
 {
-  "key": "MatchIt::match.data",
   "pkg": "MatchIt",
   "fn": "match.data",
   "from_version": "4.0.99",
-  "to_version": "4.7.9",
+  "to_version": "4.4.9",
   "risk": "medium",
-  "description": "Breaking change in match.data function affecting behavior between versions 4.1.0 and 4.7.2",
+  "description": "In MatchIt 4.1.0, match.data() began including a subclass column in its output for all matching methods when replace = FALSE (the default), not just for subclassification, optimal, and full matching as before. Code that assumes a fixed column structure in the matched dataset (e.g. column indexing by position or merging by column count) may silently include an unexpected 'subclass' column or produce incorrect joins.",
   "reference": "https://kosukeimai.github.io/MatchIt/news/index.html",
   "added_by": "ndohpenngit",
-  "added_date": "YYYY-MM-DD"
+  "added_date": "2026-06-16",
+  "closed": true
 }
