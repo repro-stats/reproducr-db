@@ -7,5 +7,6 @@
   "description": "tidyr 1.0.0 introduced pivot_wider() as a replacement for spread(). Unlike spread(), which silently kept the last value for duplicate identifier rows, pivot_wider() with the default values_fn = NULL produces list-columns (with a warning) when identifiers are not unique, rather than silently picking one value. Code migrated from spread() to pivot_wider() without specifying values_fn may now get list-columns or warnings instead of the previously silent last-value-wins behaviour. tidyr 1.2.0 further improved the diagnostic message shown in this situation.",
   "reference": "https://rdrr.io/cran/tidyr/f/NEWS.md",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-11"
+  "added_date": "2026-06-11",
+  "closed": true
 }
