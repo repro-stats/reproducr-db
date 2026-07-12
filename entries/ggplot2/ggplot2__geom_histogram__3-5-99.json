@@ -7,5 +7,6 @@
   "description": "In ggplot2 4.0.0, all binning stats (including geom_histogram()/stat_bin()) switched to a boundary/center parametrisation rather than origin, and the default boundary is now chosen to better adhere to the nbin argument. This may silently change the bin edges and resulting bar positions/heights of histograms that rely on default binning, with no code change required.",
   "reference": "https://ggplot2.tidyverse.org/news/index.html#ggplot2-400",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-11"
+  "added_date": "2026-06-11",
+  "closed": true
 }
