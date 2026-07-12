@@ -3,9 +3,9 @@
   "fn": "scale_colour_continuous",
   "from_version": "3.5.99",
   "to_version": "4.0.9",
-  "risk": "low",
-  "description": "In ggplot2 4.0.0, the default colour and fill scales gained a palette argument; the new default (palette = NULL) retrieves palettes from the active theme rather than using a hardcoded default, and this is now the default for generic scales like scale_colour_continuous()/scale_fill_continuous(). Plots using a customised theme palette setting (theme(palette.colour.continuous = ...) or similar) may now silently receive different default colours than under ggplot2 3.5.x, even without changing scale calls.",
-  "reference": "https://ggplot2.tidyverse.org/news/index.html#ggplot2-400",
+  "risk": "medium",
+  "description": "In ggplot2 4.0.0, the default colour and fill scales have a new palette argument that replaces the old options-based type system (ggplot2.continuous.colour, ggplot2.continuous.fill). Limited backward compatibility is provided, but code relying on the old type-based approach may break.",
+  "reference": "https://github.com/tidyverse/ggplot2/blob/main/NEWS.md",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-11"
+  "added_date": "YYYY-MM-DD"
 }
