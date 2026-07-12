@@ -30,7 +30,7 @@ from github import Github, Auth, GithubException
 # ── Constants ────────────────────────────────────────────────────────────────
 
 MODEL = "claude-haiku-4-5-20251001"
-MAX_TOKENS = 4096
+MAX_TOKENS = 2048
 
 SYSTEM_PROMPT = """\
 You are a senior statistical software engineer maintaining the reproducr-db
