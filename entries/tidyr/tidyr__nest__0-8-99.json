@@ -7,5 +7,6 @@
   "description": "In tidyr 1.0.0, nest() and unnest() were overhauled with new syntax: nest(x, y, z) became nest(data = c(x, y, z)), and the first argument changed from data to .data. Additionally, nest() now preserves grouping from dplyr::group_by(), which affects downstream group-aware calls like mutate() and filter(). Old positional-column usage of nest() generates a translation warning but may not always translate correctly, and code relying on nest() *not* preserving groups may now silently behave differently.",
   "reference": "https://rdrr.io/cran/tidyr/f/NEWS.md",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-11"
+  "added_date": "2026-06-11",
+  "closed": true
 }
