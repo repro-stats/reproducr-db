@@ -3,15 +3,16 @@
 reproducr-db staleness remediation agent.
 
 For each stale database entry, calls Claude to:
-  1. Fetch the official changelog (pre-fetched once per package, not per entry)
+  1. Fetch the official changelog (pre-fetched once per package, stripped of HTML)
   2. Determine the correct action (raise_floor / extend_ceiling / close / no_change)
   3. Draft the corrected JSON entry
   4. Open a PR in reproducr-db for human review
 
-Cost optimisation: changelogs are fetched once per unique package via HTTP
-before the agent loop, then passed directly in the user message. web_search
-is disabled for entries whose changelog was successfully pre-fetched, cutting
-per-run cost by ~70-80%.
+Cost optimisation:
+  - Changelogs fetched once per package via HTTP (not web_search per entry)
+  - HTML stripped to plain text before passing to Claude (3-5x token reduction)
+  - Entries batched by package — one API call per package, not per entry
+  - web_search disabled when changelog is pre-fetched
 
 Usage:
     python remediate_staleness.py \
@@ -29,6 +30,7 @@ import sys
 import datetime
 import urllib.request
 import urllib.error
+from collections import defaultdict
 from pathlib import Path
 
 import anthropic
@@ -40,13 +42,11 @@ from github import Github, Auth, GithubException
 MODEL      = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 2048
 
-# Maximum changelog characters to pass to Claude per package.
-# Recent releases appear at the top of most changelogs so the first
-# 25 000 chars covers several years of history.
-CHANGELOG_MAX_CHARS = 25_000
+# Plain-text chars to pass per package changelog.
+# After HTML stripping, 12k chars covers 3-4 years of active package history.
+CHANGELOG_MAX_CHARS = 12_000
 
 # Known changelog URLs — pre-fetched once before the entry loop.
-# Entries for packages not listed here fall back to web_search.
 CHANGELOG_URLS: dict[str, str] = {
     "dplyr":      "https://dplyr.tidyverse.org/news/index.html",
     "ggplot2":    "https://ggplot2.tidyverse.org/news/index.html",
@@ -74,12 +74,6 @@ in pharmaceutical, clinical trial, and regulated research environments where
 false positives and false negatives both have real consequences. Precision
 and accuracy are non-negotiable.
 
-## Your role
-You review stale database entries and determine the correct remediation.
-Every decision you make will affect whether regulated R users are correctly
-warned about breaking changes — or incorrectly flagged for changes they are
-not exposed to. Think carefully before recommending any action.
-
 ## Database schema
 Each entry defines a half-open version window (from_version, to_version]:
 {
@@ -93,160 +87,131 @@ Each entry defines a half-open version window (from_version, to_version]:
   "added_by":     "ndohpenngit",
   "added_date":   "YYYY-MM-DD"
 }
-
-A user is flagged if and only if their installed version V satisfies:
-  from_version < V <= to_version
+A user is flagged if and only if: from_version < installed_version <= to_version
 
 ## Staleness types
-- stale_ceiling: current CRAN version is above to_version. The window ceiling
-  may need extending if the breaking change still applies in newer versions.
-- stale_floor: from_version is >= 1 major version behind current CRAN. The
-  window floor may be too wide, flagging users who upgraded past the risk
-  long ago.
+- stale_ceiling: current CRAN above to_version — may need extending
+- stale_floor: from_version >= 1 major version behind CRAN — may be too wide
 
 ## Changelog research
-If a pre-fetched changelog is provided in the user message, use it directly
-and do NOT call web_search for this package — the changelog is already there.
-Only call web_search if no changelog is provided, or if the pre-fetched
-content is clearly insufficient for the specific version range in question.
+If a pre-fetched changelog is provided, use it directly — do NOT web_search.
+Only call web_search if no changelog is provided or content is clearly
+insufficient for the specific version range.
 
-## Mandatory analysis steps
-Before recommending ANY action you must:
+## Decision framework (apply per entry)
 
-1. Read the official changelog (pre-fetched or searched).
-   Identify the EXACT version the breaking change was introduced.
-   Note: this may be a mid-minor release (e.g. 1.0.8, not 1.0.0).
-   Cite the specific changelog section, version number, and date.
+### Q1: Is the window archaeologically unreachable?
+Indicators: transition 5+ years ago AND CRAN is 2+ major versions ahead
+of to_version, OR function did not exist at from_version.
+YES → close
 
-2. Identify the EXACT last version where the old (safe) behaviour existed.
+### Q2: stale_floor — who is actually still at risk?
+a) What exactly changed and in which version?
+b) Mid-minor changes (e.g. 1.0.8): from_version "0.8.99" still flags
+   1.0.8–to_version correctly if those users exist in practice.
+c) Pharma/clinical renv-pinned environments: versions up to 3-4 years old
+   are realistic.
+d) Window still producing true positives? NO → close. YES but too wide → raise_floor.
 
-3. Determine who is ACTUALLY at risk today:
-   - What is the current CRAN version?
-   - What versions could a real active project plausibly have installed?
-   - Is the breaking-change window still reachable by any realistic project?
-   - Has enough time passed that virtually all users have transitioned?
-   - Are there long-term support environments (pharma, clinical) where
-     pinned old versions are realistic?
-
-4. Check whether intermediate minor series existed on CRAN:
-   - If a package jumped from 0.8.x directly to 1.0.0 with no 0.9.x,
-     raising the sentinel to 0.9.99 is cosmetic — state this explicitly.
-
-## Decision framework — work through these questions in order
-
-### Q1: Is the entire version window archaeologically unreachable?
-The window (from_version, to_version] is unreachable if no realistic active
-project could have a version within it. Indicators:
-- The transition happened 5+ years ago AND current CRAN is 2+ major versions
-  ahead of to_version
-- No pinned environment (including regulated/pharma) would plausibly still
-  be within the window
-- The function did not exist at from_version (e.g. pivot_wider in tidyr 0.8.x)
-
-If YES → action: close
-
-### Q2: For stale_floor — who is actually still at risk?
-The stale_floor flag fires when from_version is >= 1 major version behind
-current CRAN. This does NOT automatically mean raise_floor. Work through:
-
-a) What exactly is the breaking change and which version introduced it?
-
-b) If the breaking change landed mid-minor (e.g. 1.0.8 not 1.0.0):
-   - A from_version of "0.8.99" flags everyone above 0.8.99, which is
-     correct IF users on 1.0.8-to_version still exist in practice.
-
-c) Are users on intermediate versions still realistic in pharma/pinned
-   environments?
-
-d) Is the window still producing true positives for any realistic user?
-   If NO → close (not raise_floor)
-   If YES but floor is too wide → raise_floor
-
-### Q3: For stale_ceiling — does the breaking change still apply?
-a) Read changelogs for versions between to_version and current CRAN
-b) Was the breaking change reverted, fixed, or superseded?
-c) Does the risk still apply in the current release?
-If YES → extend_ceiling (X.Y.9 sentinel)
-If NO → update description, narrow to_version, or close
+### Q3: stale_ceiling — does the change still apply?
+Reverted/fixed/superseded? NO → close or narrow. Still applies? YES → extend_ceiling.
 
 ### Q4: Sentinel correctness for raise_floor
-The sentinel pattern is X.Y.99 — always the last patch of a minor series.
-NEVER set from_version to an actual released version number (e.g. "0.8.5").
-NEVER lower from_version (which would widen the window).
-Only raise from_version (narrowing the window from below).
-Verify the intermediate minor series actually existed on CRAN before raising.
+X.Y.99 pattern only. NEVER use a real version number. NEVER lower from_version.
+Verify the intermediate minor series existed on CRAN before raising.
 
 ## Actions
-
-- raise_floor: raise from_version sentinel to narrow the window from below.
-  NEVER lower the sentinel. NEVER use a real version number.
-  Example: breaking change in 1.0.0, 0.9.x existed → from_version = "0.9.99"
-  Example: breaking change in 1.0.0, no 0.9.x → no_change (cosmetic only)
-
-- extend_ceiling: raise to_version to cover the current release series.
-  Always use X.Y.9 sentinel: "1.2.9", "4.0.9" etc.
-
-- close: permanently suppress this entry.
-  Use ONLY when the entire window is archaeologically unreachable.
-  Do NOT close if any realistic user population could still be at risk.
-
-- no_change: the staleness flag is a false positive on inspection.
-  Always state explicitly why no change is needed and why the flag fired.
+- raise_floor: raise from_version sentinel (narrowing window from below)
+- extend_ceiling: raise to_version to X.Y.9 to cover current release series
+- close: entire window archaeologically unreachable — no realistic user at risk
+- no_change: staleness flag is a false positive — entry is correct as-is
 
 ## Regulated environment requirements
-- False positive: wastes analyst time, erodes trust, may delay submissions
+- False positive: wastes analyst time, may delay regulated submissions
 - False negative: could compromise reproducibility of regulated analyses
+Never guess. Cite specific changelog version, section, and date for every claim.
 
-Therefore:
-- Never guess. If uncertain, use no_change and state what is missing.
-- Cite the specific changelog section, version number, and date for every
-  factual claim.
-- Do not infer from package behaviour — only cite documented changes.
-
-## Response format — CRITICAL
-Your FINAL response must be a JSON object and nothing else.
-No prose before or after. No markdown fences. No explanation outside JSON.
-Just the raw JSON object:
+## Response format
+Return a JSON object with a "remediations" array — one item per entry, in
+the same order as provided. No prose, no markdown fences.
 {
-  "action": "raise_floor|extend_ceiling|close|no_change",
-  "rationale": "2-3 sentences: (1) cite exact changelog evidence with version
-                and date, (2) state who is realistically at risk today,
-                (3) explain why this action is correct.",
-  "corrected_entry": { ...full corrected entry with all original fields... }
+  "remediations": [
+    {
+      "fn": "filter",
+      "action": "raise_floor|extend_ceiling|close|no_change",
+      "rationale": "2-3 sentences: changelog evidence (version+date), who is at risk, why this action.",
+      "corrected_entry": { ...full entry with all original fields... } or null
+    }
+  ]
 }
-For close or no_change, set corrected_entry to null.
+corrected_entry must be null for close and no_change.
 """
+
+
+# ── HTML stripping ────────────────────────────────────────────────────────────
+
+def strip_html(html: str) -> str:
+    """
+    Strip HTML tags and decode common entities to produce clean plain text.
+    Reduces token count by 3-5x compared to raw HTML.
+    """
+    # Remove script and style blocks entirely
+    html = re.sub(
+        r'<(script|style)[^>]*>.*?</\1>', '', html,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+    # Replace block-level tags with newlines for readability
+    html = re.sub(
+        r'<(br|p|div|li|h[1-6]|section|article)[^>]*/?>',
+        '\n', html, flags=re.IGNORECASE
+    )
+    # Remove all remaining tags
+    html = re.sub(r'<[^>]+>', '', html)
+    # Decode common HTML entities
+    for entity, char in [
+        ('&amp;', '&'), ('&lt;', '<'), ('&gt;', '>'),
+        ('&nbsp;', ' '), ('&#39;', "'"), ('&quot;', '"'),
+        ('&ldquo;', '"'), ('&rdquo;', '"'), ('&mdash;', '—'),
+        ('&ndash;', '–'), ('&lsquo;', "'"), ('&rsquo;', "'"),
+    ]:
+        html = html.replace(entity, char)
+    # Collapse whitespace while preserving paragraph breaks
+    html = re.sub(r'[ \t]+', ' ', html)
+    html = re.sub(r'\n{3,}', '\n\n', html)
+    return html.strip()
 
 
 # ── Changelog pre-fetcher ────────────────────────────────────────────────────
 
 def fetch_changelog(pkg: str, url: str, timeout: int = 20) -> str | None:
     """
-    Fetch a package changelog via HTTP. Returns the text content (truncated
-    to CHANGELOG_MAX_CHARS) or None on failure.
+    Fetch a package changelog, strip HTML, and truncate.
+    Returns plain-text content or None on failure.
     """
     try:
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "reproducr-db-agent/1.0 (github.com/repro-stats)"}
+            headers={"User-Agent": "reproducr-db-agent/1.0"}
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            content = resp.read().decode("utf-8", errors="replace")
-        if len(content) > CHANGELOG_MAX_CHARS:
-            content = content[:CHANGELOG_MAX_CHARS] + "\n\n[... changelog truncated ...]"
-        return content
+            raw = resp.read().decode("utf-8", errors="replace")
+        # Strip HTML if content looks like HTML
+        if "<html" in raw[:200].lower() or "<!doctype" in raw[:200].lower():
+            text = strip_html(raw)
+        else:
+            text = raw  # Already plain text (e.g. raw NEWS.md)
+        if len(text) > CHANGELOG_MAX_CHARS:
+            text = text[:CHANGELOG_MAX_CHARS] + "\n\n[... changelog truncated ...]"
+        return text
     except Exception as e:
         print(f"  ⚠  Could not pre-fetch changelog for {pkg}: {e}")
         return None
 
 
 def prefetch_changelogs(pkgs: set[str]) -> dict[str, str]:
-    """
-    Fetch changelogs for all known packages in pkgs.
-    Returns a dict of {pkg: changelog_text}.
-    """
+    """Fetch changelogs for all known packages. Returns {pkg: plain_text}."""
     changelogs: dict[str, str] = {}
-    known = {p for p in pkgs if p in CHANGELOG_URLS}
+    known   = {p for p in pkgs if p in CHANGELOG_URLS}
     unknown = pkgs - known
 
     if known:
@@ -255,20 +220,17 @@ def prefetch_changelogs(pkgs: set[str]) -> dict[str, str]:
             text = fetch_changelog(pkg, CHANGELOG_URLS[pkg])
             if text:
                 changelogs[pkg] = text
-                print(f"  ✓  {pkg} ({len(text):,} chars)")
+                print(f"  ✓  {pkg} ({len(text):,} chars plain text)")
             else:
                 print(f"  ✗  {pkg} — will fall back to web_search")
-
     if unknown:
         print(f"No pre-fetch URL for: {', '.join(sorted(unknown))} — will use web_search")
-
     return changelogs
 
 
 # ── JSON parsing helper ───────────────────────────────────────────────────────
 
-def _parse_json(text: str) -> dict | None:
-    """Extract and parse the first JSON object found in text."""
+def _parse_json(text: str) -> dict | list | None:
     if not text:
         return None
     text = re.sub(r"^```(?:json)?\s*", "", text.strip())
@@ -286,68 +248,71 @@ def _parse_json(text: str) -> dict | None:
     return None
 
 
-# ── Claude call ──────────────────────────────────────────────────────────────
+# ── Claude call (batch per package) ──────────────────────────────────────────
 
-def remediate_entry(
+def remediate_package(
     client: anthropic.Anthropic,
-    entry: dict,
+    pkg: str,
+    entries: list[dict],
     changelog: str | None = None,
-) -> dict | None:
+) -> list[dict] | None:
     """
-    Ask Claude to determine the remediation for one stale entry.
-    If changelog is provided, it is passed directly and web_search is disabled.
-    Returns the parsed remediation dict, or None on failure.
+    Process all stale entries for one package in a single Claude call.
+    Returns a list of remediation dicts (one per entry, same order),
+    or None on failure.
     """
-    today = datetime.date.today().isoformat()
+    today   = datetime.date.today().isoformat()
+    n       = len(entries)
+    plural  = "entries" if n > 1 else "entry"
+
+    entries_block = "\n\n".join(
+        f"Entry {i+1} (fn=\"{e['fn']}\"):\n{json.dumps(e, indent=2)}"
+        for i, e in enumerate(entries)
+    )
 
     if changelog:
         changelog_block = (
-            f"\nOFFICIAL CHANGELOG (pre-fetched — read this carefully, "
-            f"do NOT call web_search):\n"
-            f"<changelog pkg=\"{entry['pkg']}\">\n{changelog}\n</changelog>\n"
+            f"\nOFFICIAL CHANGELOG for {pkg} (pre-fetched plain text — "
+            f"use this directly, do NOT call web_search):\n"
+            f"<changelog>\n{changelog}\n</changelog>\n"
         )
-        tools        = []   # web_search not needed — changelog already provided
-        research_instruction = (
-            "Use the pre-fetched changelog above. "
-            "Do NOT call web_search — the changelog is already provided."
-        )
+        tools              = []
+        research_note      = "Use the pre-fetched changelog above. Do NOT call web_search."
     else:
-        changelog_block      = ""
-        tools                = [{"type": "web_search_20250305", "name": "web_search"}]
-        research_instruction = (
-            f"Use web_search to fetch the changelog at: "
-            f"{entry.get('reference', 'search for ' + entry['pkg'] + ' changelog')}"
+        changelog_block    = ""
+        tools              = [{"type": "web_search_20250305", "name": "web_search"}]
+        research_note      = (
+            f"Use web_search to fetch the {pkg} changelog before deciding."
         )
 
     user_message = f"""\
-Review this stale database entry and determine the correct remediation.
-This database is used in regulated pharmaceutical and clinical research
-environments. Precision is critical — work through the decision framework
-carefully before choosing an action.
+Review the following {n} stale database {plural} for the R package '{pkg}'.
+Apply the full decision framework to each entry independently.
+Today's date: {today}
 
-Entry JSON:
-{json.dumps(entry, indent=2)}
-
-Staleness status: {entry['status']}
-Gap description:  {entry.get('gap', 'N/A')}
-Today's date:     {today}
+{research_note}
 {changelog_block}
-Required steps:
-1. {research_instruction}
-2. Identify the EXACT version the breaking change was introduced and the
-   EXACT last safe version. Cite changelog section, version number, date.
-3. Determine who is realistically at risk today, considering pharma/clinical
-   contexts with renv-pinned package versions.
-4. Work through the decision framework (Q1 → Q4) before deciding.
-5. Output your final answer as a raw JSON object only —
-   no prose before or after, no markdown fences.
+{entries_block}
+
+Return a JSON object with a "remediations" array — one item per entry in
+the same order, no prose, no markdown fences:
+{{
+  "remediations": [
+    {{
+      "fn": "<function name>",
+      "action": "raise_floor|extend_ceiling|close|no_change",
+      "rationale": "2-3 sentences: exact changelog evidence (version+date), who is at risk, why this action.",
+      "corrected_entry": {{ ...full entry... }} or null
+    }}
+  ]
+}}
 """
 
     messages = [{"role": "user", "content": user_message}]
 
     response = client.messages.create(
         model=MODEL,
-        max_tokens=MAX_TOKENS,
+        max_tokens=MAX_TOKENS * max(1, n),  # scale with number of entries
         tools=tools,
         system=SYSTEM_PROMPT,
         messages=messages,
@@ -355,40 +320,36 @@ Required steps:
 
     text_blocks = [b.text for b in response.content if b.type == "text"]
     raw         = "\n".join(text_blocks).strip()
-    result      = _parse_json(raw)
+    parsed      = _parse_json(raw)
 
-    if result is None:
-        print("  ↩  No JSON in initial response — requesting JSON-only follow-up")
+    if parsed is None or "remediations" not in parsed:
+        # Follow-up turn
+        print(f"  ↩  No valid JSON for {pkg} batch — requesting follow-up")
         messages.append({"role": "assistant", "content": response.content})
         messages.append({
             "role": "user",
             "content": (
-                "You have completed your research. Now output your final answer "
-                "as a raw JSON object only — no prose, no markdown fences, "
-                "nothing before or after the JSON.\n\n"
-                "Required format:\n"
-                '{"action": "raise_floor|extend_ceiling|close|no_change", '
-                '"rationale": "2-3 sentences citing exact changelog evidence, '
-                'who is at risk today, and why this action is correct", '
-                '"corrected_entry": { ...full entry... } or null}'
+                "Output your final answer as a raw JSON object only — "
+                "no prose, no markdown fences:\n"
+                '{"remediations": [{"fn": "...", "action": "...", '
+                '"rationale": "...", "corrected_entry": {...} or null}]}'
             )
         })
         response2   = client.messages.create(
             model=MODEL,
-            max_tokens=MAX_TOKENS,
+            max_tokens=MAX_TOKENS * max(1, n),
             system=SYSTEM_PROMPT,
             messages=messages,
         )
         text_blocks2 = [b.text for b in response2.content if b.type == "text"]
         raw2         = "\n".join(text_blocks2).strip()
-        result       = _parse_json(raw2)
+        parsed       = _parse_json(raw2)
 
-        if result is None:
-            print(f"  ✗  Could not parse Claude response after follow-up for "
-                  f"{entry['pkg']}::{entry['fn']}")
-            print(f"  Raw: {raw2[:400]}")
+    if parsed is None or "remediations" not in parsed:
+        print(f"  ✗  Could not parse batch response for {pkg}")
+        return None
 
-    return result
+    return parsed["remediations"]
 
 
 # ── File path helpers ─────────────────────────────────────────────────────────
@@ -397,12 +358,7 @@ def version_to_dashes(version: str) -> str:
     return version.replace(".", "-")
 
 
-def entry_filepath(entries_dir: Path, pkg: str, fn: str, from_version: str) -> Path:
-    return entries_dir / pkg / f"{pkg}__{fn}__{version_to_dashes(from_version)}.json"
-
-
 def old_filepath(entries_dir: Path, pkg: str, fn: str, from_version: str) -> Path | None:
-    """Find existing file for this entry (from_version may differ)."""
     pkg_dir = entries_dir / pkg
     if not pkg_dir.exists():
         return None
@@ -422,11 +378,9 @@ def create_pr(
     files: list[tuple[str, str]],
     files_to_delete: list[str] = None,
 ) -> str:
-    """Create a branch, commit files, and open a PR. Returns the PR URL."""
     repo     = gh.get_repo(repo_name)
     base_sha = repo.get_branch(base).commit.sha
 
-    # Create or reuse branch
     try:
         repo.create_git_ref(ref=f"refs/heads/{branch}", sha=base_sha)
     except GithubException as e:
@@ -435,7 +389,6 @@ def create_pr(
         else:
             raise
 
-    # Commit files
     for path, content in files:
         try:
             existing = repo.get_contents(path, ref=branch)
@@ -449,18 +402,16 @@ def create_pr(
                 content=content, branch=branch,
             )
 
-    # Delete old files (e.g. renamed from_version)
     for path in (files_to_delete or []):
         try:
             existing = repo.get_contents(path, ref=branch)
             repo.delete_file(
-                path=path, message=f"chore: remove old entry {path}",
+                path=path, message=f"chore: remove {path}",
                 sha=existing.sha, branch=branch,
             )
         except GithubException:
             pass
 
-    # Check for existing open PR on this branch before creating a new one
     owner_login  = repo.owner.login
     existing_prs = list(repo.get_pulls(state="open", head=f"{owner_login}:{branch}"))
     if existing_prs:
@@ -534,16 +485,152 @@ issue once this PR is merged.
 
 # ── Schema constants ──────────────────────────────────────────────────────────
 
-# Fields that belong in the JSON schema — everything else is stripped
-# before writing to disk to prevent validate CI failures.
-_SCHEMA_FIELDS = frozenset({
+_SCHEMA_FIELDS   = frozenset({
     "pkg", "fn", "from_version", "to_version", "risk",
     "description", "reference", "added_by", "added_date", "closed",
 })
+_STALENESS_ONLY  = frozenset({"key", "status", "gap", "current_version"})
 
-# Fields present in stale_entries.json (from check_db_staleness) that must
-# not be forwarded to Claude or included in corrected_entry.
-_STALENESS_ONLY = frozenset({"key", "status", "gap", "current_version"})
+
+# ── Entry enrichment ──────────────────────────────────────────────────────────
+
+def enrich_entry(raw_entry: dict, entries_dir: Path) -> dict:
+    """
+    Merge stale entry (8 columns from check_db_staleness) with the full
+    JSON from disk (which includes description, reference, risk etc.).
+    Strips staleness-only fields so they never reach Claude or corrected_entry.
+    """
+    existing_path = old_filepath(
+        entries_dir, raw_entry["pkg"], raw_entry["fn"], raw_entry["from_version"]
+    )
+    if existing_path and existing_path.exists():
+        with open(existing_path) as f:
+            entry = json.load(f)
+        entry["status"]          = raw_entry["status"]
+        entry["gap"]             = raw_entry.get("gap")
+        entry["current_version"] = raw_entry.get("current_version")
+    else:
+        entry = raw_entry.copy()
+
+    return {k: v for k, v in entry.items() if k not in _STALENESS_ONLY}
+
+
+# ── Process one remediation result ───────────────────────────────────────────
+
+def process_remediation(
+    raw_entry: dict,
+    entry: dict,
+    remediation: dict,
+    entries_dir: Path,
+    gh_client,
+    repo_obj,
+    open_pr_titles: set[str],
+    args,
+    results: dict,
+) -> None:
+    """Apply a single remediation result: validate, build PR, update results."""
+    key    = f"{entry['pkg']}::{entry['fn']}"
+    action = remediation.get("action", "no_change")
+
+    print(f"  Action:    {action}")
+    print(f"  Rationale: {remediation.get('rationale', '')}")
+
+    if action == "no_change":
+        print(f"  → No change needed.\n")
+        results["skipped"].append(key)
+        return
+
+    if args.dry_run.lower() == "true":
+        print(f"  → Dry run: would open PR.\n")
+        results["success"].append(key)
+        return
+
+    # ── Resolve corrected entry ─────────────────────────────────────────────
+    corrected      = remediation.get("corrected_entry")
+    existing_path  = old_filepath(
+        entries_dir, raw_entry["pkg"], raw_entry["fn"], raw_entry["from_version"]
+    )
+
+    if action == "close" and not corrected:
+        if existing_path and existing_path.exists():
+            with open(existing_path) as f:
+                corrected = json.load(f)
+            print(f"  ↩  close: derived from {existing_path.name}")
+        else:
+            corrected = {k: v for k, v in entry.items() if k not in _STALENESS_ONLY}
+            print("  ↩  close: no disk file; using enriched entry as base")
+
+    if not corrected:
+        print(f"  ✗  No corrected entry for '{action}' — skipping\n")
+        results["failed"].append(key)
+        return
+
+    # Required field guard
+    for field in ("pkg", "fn", "from_version", "to_version",
+                  "risk", "description", "reference"):
+        if field not in corrected:
+            print(f"  ✗  corrected_entry missing '{field}' — skipping\n")
+            results["failed"].append(key)
+            return
+
+    pkg      = corrected["pkg"]
+    fn       = corrected["fn"]
+    new_from = (
+        raw_entry["from_version"] if action == "close"
+        else corrected["from_version"]
+    )
+    new_path     = f"entries/{pkg}/{pkg}__{fn}__{version_to_dashes(new_from)}.json"
+    old_path_obj = old_filepath(entries_dir, pkg, fn, raw_entry["from_version"])
+    old_path     = f"entries/{pkg}/{old_path_obj.name}" if old_path_obj else None
+
+    files_to_delete = (
+        [old_path]
+        if old_path and old_path != new_path and action == "raise_floor"
+        else []
+    )
+
+    # Duplicate PR check
+    safe_key = f"{pkg}-{fn}".replace("::", "-").replace(".", "-")
+    branch   = f"fix/db-staleness-{safe_key}"
+
+    if any(f"{pkg}::{fn}" in t for t in open_pr_titles):
+        print(f"  → Open PR already exists — skipping\n")
+        results["skipped"].append(key)
+        return
+
+    action_prefixes = {
+        "raise_floor":    "fix(db): raise from_version",
+        "extend_ceiling": "fix(db): extend to_version",
+        "close":          "fix(db): close entry",
+    }
+    pr_title = (
+        f"{action_prefixes.get(action, 'fix(db):')} "
+        f"{pkg}::{fn} [{raw_entry['status']}]"
+    )
+    pr_body = build_pr_body(raw_entry, remediation)
+
+    if action == "close":
+        corrected["closed"] = True
+
+    corrected = {k: v for k, v in corrected.items() if k in _SCHEMA_FIELDS}
+
+    try:
+        pr_url = create_pr(
+            gh=gh_client,
+            repo_name=args.repo,
+            branch=branch,
+            base="main",
+            title=pr_title,
+            body=pr_body,
+            files=[(new_path, json.dumps(corrected, indent=2))],
+            files_to_delete=files_to_delete,
+        )
+        print(f"  ✓  PR: {pr_url}\n")
+        open_pr_titles.add(pr_title)
+        results["success"].append(key)
+    except Exception as e:
+        print(f"  ✗  Failed to create PR: {e}\n")
+        results["failed"].append(key)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -556,28 +643,36 @@ def main():
     parser.add_argument("--entries-dir",   required=True)
     parser.add_argument("--dry-run",       default="false")
     parser.add_argument("--repo",          required=True)
-    parser.add_argument("--fail-on-error", default="false",
-                        help="Exit non-zero when any entry failed (default: false)")
+    parser.add_argument("--fail-on-error", default="false")
     args = parser.parse_args()
 
-    dry_run       = args.dry_run.lower() == "true"
     fail_on_error = args.fail_on_error.lower() == "true"
     entries_dir   = Path(args.entries_dir)
+    dry_run       = args.dry_run.lower() == "true"
 
     with open(args.stale_file) as f:
-        stale_entries = json.load(f)
+        raw_stale_entries = json.load(f)
 
-    if not stale_entries:
+    if not raw_stale_entries:
         print("No stale entries to remediate.")
         sys.exit(0)
 
-    print(f"Remediating {len(stale_entries)} stale entries "
+    n_total = len(raw_stale_entries)
+    print(f"Remediating {n_total} stale entries "
           f"({'dry run' if dry_run else 'live'})...\n")
 
-    # ── Pre-fetch changelogs (one HTTP request per package, not per entry) ──
-    unique_pkgs = {e["pkg"] for e in stale_entries}
+    # ── Pre-fetch changelogs ────────────────────────────────────────────────
+    unique_pkgs = {e["pkg"] for e in raw_stale_entries}
     changelogs  = prefetch_changelogs(unique_pkgs)
     print()
+
+    # ── Enrich entries from disk ────────────────────────────────────────────
+    enriched_entries = [enrich_entry(e, entries_dir) for e in raw_stale_entries]
+
+    # ── Group by package ────────────────────────────────────────────────────
+    pkg_groups: dict[str, list[tuple[dict, dict]]] = defaultdict(list)
+    for raw, enriched in zip(raw_stale_entries, enriched_entries):
+        pkg_groups[enriched["pkg"]].append((raw, enriched))
 
     anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     gh_client = (
@@ -585,158 +680,72 @@ def main():
         if not dry_run else None
     )
 
+    # Pre-load open PR titles for duplicate detection
+    open_pr_titles: set[str] = set()
+    if not dry_run and gh_client:
+        repo_obj = gh_client.get_repo(args.repo)
+        open_pr_titles = {pr.title for pr in repo_obj.get_pulls(state="open")}
+    else:
+        repo_obj = None
+
     results = {"success": [], "skipped": [], "failed": []}
+    n_pkgs  = len(pkg_groups)
 
-    for raw_entry in stale_entries:
-        # ── Enrich entry from disk ──────────────────────────────────────────
-        # check_db_staleness() omits description, reference, risk etc.
-        # Read the full JSON from disk and overlay the staleness fields.
-        existing_path = old_filepath(
-            entries_dir, raw_entry["pkg"], raw_entry["fn"], raw_entry["from_version"]
-        )
-        if existing_path and existing_path.exists():
-            with open(existing_path) as f:
-                entry = json.load(f)
-            entry["status"]          = raw_entry["status"]
-            entry["gap"]             = raw_entry.get("gap")
-            entry["current_version"] = raw_entry.get("current_version")
-        else:
-            entry = raw_entry.copy()
+    print(f"Processing {n_pkgs} package group(s) "
+          f"({n_total} entries → {n_pkgs} API calls):\n")
 
-        # Strip staleness-only fields before sending to Claude so they are
-        # never reflected back in corrected_entry.
-        entry = {k: v for k, v in entry.items() if k not in _STALENESS_ONLY}
+    for pkg_idx, (pkg, group) in enumerate(pkg_groups.items(), 1):
+        raw_entries  = [g[0] for g in group]
+        enr_entries  = [g[1] for g in group]
+        n_pkg        = len(group)
 
-        key = f"{entry['pkg']}::{entry['fn']}"
-        print(f"→ {key} ({entry['status']})")
+        print(f"[{pkg_idx}/{n_pkgs}] {pkg} — {n_pkg} entr{'y' if n_pkg == 1 else 'ies'}")
 
-        # ── Call Claude ─────────────────────────────────────────────────────
-        remediation = remediate_entry(
+        remediations = remediate_package(
             anthropic_client,
-            entry,
-            changelog=changelogs.get(entry["pkg"]),
+            pkg,
+            enr_entries,
+            changelog=changelogs.get(pkg),
         )
-        if remediation is None:
-            print(f"  ✗  Agent failed — skipping\n")
-            results["failed"].append(key)
+
+        if remediations is None:
+            print(f"  ✗  Batch call failed for {pkg} — marking all as failed\n")
+            for raw, _ in group:
+                results["failed"].append(f"{raw['pkg']}::{raw['fn']}")
             continue
 
-        action = remediation.get("action", "no_change")
-        print(f"  Action:    {action}")
-        print(f"  Rationale: {remediation.get('rationale', '')}")
+        # Match remediations back to entries by fn
+        rem_by_fn = {r.get("fn"): r for r in remediations if isinstance(r, dict)}
 
-        if action == "no_change":
-            print(f"  → No change needed.\n")
-            results["skipped"].append(key)
-            continue
+        for raw, enr in group:
+            fn  = enr["fn"]
+            key = f"{pkg}::{fn}"
+            print(f"→ {key} ({raw['status']})")
 
-        if dry_run:
-            print(f"  → Dry run: would open PR.\n")
-            results["success"].append(key)
-            continue
-
-        # ── Resolve corrected entry ─────────────────────────────────────────
-        corrected = remediation.get("corrected_entry")
-
-        if action == "close" and not corrected:
-            # corrected_entry is legitimately null for close — derive from disk
-            if existing_path and existing_path.exists():
-                with open(existing_path) as f:
-                    corrected = json.load(f)
-                print(f"  ↩  close: derived from {existing_path.name}")
-            else:
-                # Fallback: use the enriched entry as base
-                corrected = {k: v for k, v in entry.items()
-                             if k not in _STALENESS_ONLY}
-                print("  ↩  close: no disk file found; using stale entry as base")
-
-        if not corrected:
-            print(f"  ✗  No corrected entry for action '{action}' — skipping\n")
-            results["failed"].append(key)
-            continue
-
-        # Guard: required fields must all be present
-        for field in ("pkg", "fn", "from_version", "to_version",
-                      "risk", "description", "reference"):
-            if field not in corrected:
-                print(f"  ✗  corrected_entry missing '{field}' — skipping\n")
+            rem = rem_by_fn.get(fn)
+            if rem is None:
+                print(f"  ✗  No remediation returned for {fn} — skipping\n")
                 results["failed"].append(key)
-                corrected = None
-                break
-        if corrected is None:
-            continue
+                continue
 
-        # ── Determine file paths ────────────────────────────────────────────
-        pkg      = corrected["pkg"]
-        fn       = corrected["fn"]
-        new_from = (
-            raw_entry["from_version"] if action == "close"
-            else corrected["from_version"]
-        )
-
-        new_path     = f"entries/{pkg}/{pkg}__{fn}__{version_to_dashes(new_from)}.json"
-        old_path_obj = old_filepath(entries_dir, pkg, fn, raw_entry["from_version"])
-        old_path     = (f"entries/{pkg}/{old_path_obj.name}"
-                        if old_path_obj else None)
-
-        files_to_delete = (
-            [old_path]
-            if old_path and old_path != new_path and action == "raise_floor"
-            else []
-        )
-
-        # ── Duplicate PR check ──────────────────────────────────────────────
-        safe_key = f"{pkg}-{fn}".replace("::", "-").replace(".", "-")
-        branch   = f"fix/db-staleness-{safe_key}"
-
-        repo      = gh_client.get_repo(args.repo)
-        open_prs  = list(repo.get_pulls(state="open"))
-        existing  = [pr for pr in open_prs if f"{pkg}::{fn}" in pr.title]
-        if existing:
-            print(f"  → Open PR already exists: {existing[0].html_url} — skipping\n")
-            results["skipped"].append(key)
-            continue
-
-        # ── Build PR content ────────────────────────────────────────────────
-        action_prefixes = {
-            "raise_floor":    "fix(db): raise from_version",
-            "extend_ceiling": "fix(db): extend to_version",
-            "close":          "fix(db): close entry",
-        }
-        pr_title = (
-            f"{action_prefixes.get(action, 'fix(db):')} "
-            f"{pkg}::{fn} [{raw_entry['status']}]"
-        )
-        pr_body = build_pr_body(raw_entry, remediation)
-
-        if action == "close":
-            corrected["closed"] = True
-
-        # Strip any non-schema fields before writing JSON to disk
-        corrected = {k: v for k, v in corrected.items() if k in _SCHEMA_FIELDS}
-
-        # ── Open PR ─────────────────────────────────────────────────────────
-        try:
-            pr_url = create_pr(
-                gh=gh_client,
-                repo_name=args.repo,
-                branch=branch,
-                base="main",
-                title=pr_title,
-                body=pr_body,
-                files=[(new_path, json.dumps(corrected, indent=2))],
-                files_to_delete=files_to_delete,
+            process_remediation(
+                raw_entry     = raw,
+                entry         = enr,
+                remediation   = rem,
+                entries_dir   = entries_dir,
+                gh_client     = gh_client,
+                repo_obj      = repo_obj,
+                open_pr_titles= open_pr_titles,
+                args          = args,
+                results       = results,
             )
-            print(f"  ✓  PR: {pr_url}\n")
-            results["success"].append(key)
-        except Exception as e:
-            print(f"  ✗  Failed to create PR: {e}\n")
-            results["failed"].append(key)
+
+        print()
 
     # ── Summary ──────────────────────────────────────────────────────────────
     print("─" * 60)
     print(f"Complete: {len(results['success'])} PRs opened, "
-          f"{len(results['skipped'])} skipped (no change), "
+          f"{len(results['skipped'])} skipped, "
           f"{len(results['failed'])} failed")
 
     try:
