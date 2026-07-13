@@ -2,7 +2,7 @@
   "pkg": "readr",
   "fn": "read_tsv",
   "from_version": "1.4.99",
-  "to_version": "2.2.9",
+  "to_version": "2.2.99",
   "risk": "medium",
   "description": "In readr 2.0.0, the second-edition (vroom-based) parsing engine changed how length>1 character vectors are interpreted: previously treated as literal data to parse, they are now assumed to be multiple file paths. Code passing literal CSV text as a length>1 character vector (e.g. multiple lines built with c()) may silently be interpreted as a list of filenames instead of being parsed as data. Wrap literal data in I() to preserve the old behaviour; readr only began warning about un-I()'d literal data in 2.2.0.",
   "reference": "https://readr.tidyverse.org/news/index.html#readr-200",
