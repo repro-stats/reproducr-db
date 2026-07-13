@@ -2,7 +2,7 @@
   "pkg": "survival",
   "fn": "survfit",
   "from_version": "2.99.99",
-  "to_version": "3.8.9",
+  "to_version": "3.8.99",
   "risk": "medium",
   "description": "In survival 3.0, the survfit routines underwent a major revision to support multi-state coxph models. As part of this revision, survfit(cox_model) now returns an object of class 'survfitcox' rather than 'survfit.cox'. Code that checks the class of a survfit result (e.g. inherits(fit, 'survfit.cox') or class(fit) == 'survfit.cox') will silently fail to match. Additionally, subscripting a survfit object now removes the na.action component.",
   "reference": "https://cran.r-project.org/web/packages/survival/news.html",
