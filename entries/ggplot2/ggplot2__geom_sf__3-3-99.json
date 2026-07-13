@@ -2,7 +2,7 @@
   "pkg": "ggplot2",
   "fn": "geom_sf",
   "from_version": "3.3.99",
-  "to_version": "3.4.9",
+  "to_version": "4.0.9",
   "risk": "low",
   "description": "In ggplot2 3.4.0, geom_sf()'s default polygon border linewidth changed from 0.5 to 0.2 (this geom continues to use the size aesthetic for points, unlike most other geoms which switched to linewidth). Separately, a switch from digest::digest() to rlang::hash() for internal hashing may change the automatic ordering of legends. Both changes are maintainer-acknowledged silent visual changes: saved maps/plots generated after upgrading may show thinner polygon borders and/or differently-ordered legend entries with no code change.",
   "reference": "https://tidyverse.org/blog/2022/11/ggplot2-3-4-0/",
