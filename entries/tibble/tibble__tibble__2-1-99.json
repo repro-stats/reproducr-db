@@ -7,5 +7,6 @@
   "description": "In tibble 3.0.0, strict vctrs-based recycling was fully enforced: only vectors of length 1 are recycled to match the tibble size. Code using tibble(x = 1:6, y = 1:2) or similar patterns where a non-length-1 vector was previously recycled silently will now error with 'Tibble columns must have consistent sizes, only values of size one are recycled'. This was warned in tibble 2.0.0 but became an error in 3.0.0. Analyses relying on implicit recycling of repeated block vectors will produce silent correctness errors or fail outright after upgrading.",
   "reference": "https://www.tidyverse.org/blog/2020/04/tibble-3-0-0/",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-17"
+  "added_date": "2026-06-17",
+  "closed": true
 }
