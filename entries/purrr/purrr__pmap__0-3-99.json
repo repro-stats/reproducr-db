@@ -2,7 +2,7 @@
   "pkg": "purrr",
   "fn": "pmap",
   "from_version": "0.3.99",
-  "to_version": "1.2.9",
+  "to_version": "1.2.99",
   "risk": "medium",
   "description": "In purrr 1.0.0, pmap() adopted tidyverse recycling rules: only length-1 list elements are recycled; all others must have the same length. Code relying on implicit recycling of non-length-1 inputs will now error. The map_dfr() and map_dfc() variants were also superseded in 1.0.0 in favour of map() |> list_rbind() and map() |> list_cbind(); scripts using them will produce deprecation warnings and may break in a future release.",
   "reference": "https://purrr.tidyverse.org/news/index.html#purrr-100",
