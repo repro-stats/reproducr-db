@@ -7,6 +7,5 @@
   "description": "select() and rename() switched to the new tidyselect interface in dplyr 1.0.0, adding Boolean logic operators (!, &, |) and requiring predicate functions to be wrapped in where(); code written against 0.9.x or earlier that used bare predicates or the legacy vars_select() interface may break.",
   "reference": "https://dplyr.tidyverse.org/news/index.html",
   "added_by": "ndohpenngit",
-  "added_date": "2026-06-18",
-  "closed": true
+  "added_date": "2026-06-18"
 }
