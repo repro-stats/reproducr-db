@@ -2,7 +2,7 @@
   "pkg": "tidyr",
   "fn": "unnest",
   "from_version": "0.8.99",
-  "to_version": "1.3.9",
+  "to_version": "1.3.99",
   "risk": "medium",
   "description": "In tidyr 1.0.0, unnest() was rewritten. The old interface (passing multiple columns positionally) changed; .drop and .id arguments were removed. Code using the old unnest() API may silently change structure.",
   "reference": "https://tidyr.tidyverse.org/news/index.html",
