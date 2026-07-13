@@ -524,6 +524,30 @@ def main():
     results = {"success": [], "skipped": [], "failed": []}
 
     for entry in stale_entries:
+        # Enrich the stale entry with the full JSON from disk before sending
+        # to Claude. check_db_staleness() only returns schema columns (key,
+        # pkg, fn, from_version, to_version, current_version, status, gap)
+        # and omits description, reference, risk, added_by, added_date.
+        # Without description and reference Claude cannot research the entry
+        # correctly and defaults to no_change due to missing documentation.
+        existing_path = old_filepath(entries_dir, entry["pkg"], entry["fn"],
+                                     entry["from_version"])
+        if existing_path and existing_path.exists():
+            with open(existing_path) as f:
+                full_entry = json.load(f)
+            # Overlay staleness fields — these are not in the disk file
+            full_entry["status"]          = entry["status"]
+            full_entry["gap"]             = entry.get("gap")
+            full_entry["current_version"] = entry.get("current_version")
+            entry = full_entry
+
+        # Strip staleness-only fields that are not part of the JSON schema.
+        # If the disk file was not found, the raw stale entry (which includes
+        # 'key') is used as-is — remove non-schema fields before sending to
+        # Claude so they are never included in the corrected_entry.
+        _NON_SCHEMA = ("key",)
+        entry = {k: v for k, v in entry.items() if k not in _NON_SCHEMA}
+
         key = f"{entry['pkg']}::{entry['fn']}"
         print(f"→ {key} ({entry['status']})")
 
@@ -616,6 +640,17 @@ def main():
 
         if action == "close":
             corrected["closed"] = True
+
+        # Strip any staleness-only or agent-added fields that are not part
+        # of the reproducr-db JSON schema before writing the file.
+        # Leaving extra fields (e.g. 'key', 'status', 'gap', 'current_version')
+        # causes the validate CI check to fail with "Additional properties
+        # are not allowed".
+        _SCHEMA_FIELDS = {
+            "pkg", "fn", "from_version", "to_version", "risk",
+            "description", "reference", "added_by", "added_date", "closed",
+        }
+        corrected = {k: v for k, v in corrected.items() if k in _SCHEMA_FIELDS}
 
         try:
             pr_url = create_pr(
