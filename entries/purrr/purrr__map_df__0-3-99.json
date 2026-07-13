@@ -2,7 +2,7 @@
   "pkg": "purrr",
   "fn": "map_df",
   "from_version": "0.3.99",
-  "to_version": "1.2.9",
+  "to_version": "1.2.99",
   "risk": "medium",
   "description": "In purrr 1.0.0, map_df() was soft-deprecated in favour of map() |> list_rbind(). Behaviour may differ for edge cases involving NULL elements or varying column structures.",
   "reference": "https://purrr.tidyverse.org/news/index.html",
